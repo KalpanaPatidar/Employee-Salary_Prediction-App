@@ -7,13 +7,16 @@ from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import accuracy_score
 
-# Set Streamlit page configuration
+# -------------------------------
+# App Configuration
+# -------------------------------
 st.set_page_config(page_title="Employee Salary Classification App", layout="wide")
-
 st.title("💼 Employee Salary Classification App")
 st.write("Predict whether an employee earns >50K or <=50K based on input features.")
 
-# Load and preprocess the dataset
+# -------------------------------
+# Load and preprocess data
+# -------------------------------
 @st.cache_data
 def load_data():
     data = pd.read_csv("adult.csv")
@@ -23,95 +26,120 @@ def load_data():
 
 data = load_data()
 
-# Encode categorical columns
+# Label Encoding
 label_encoders = {}
-for col in data.select_dtypes(include='object').columns:
+for col in data.select_dtypes(include="object").columns:
     le = LabelEncoder()
     data[col] = le.fit_transform(data[col])
     label_encoders[col] = le
 
-# Split features and labels
-x = data.drop('income', axis=1)
-y = data['income']
+# Feature-label split
+X = data.drop("income", axis=1)
+y = data["income"]
 
-# Scale features
+# Scaling
 scaler = MinMaxScaler()
-x_scaled = scaler.fit_transform(x)
+X_scaled = scaler.fit_transform(X)
 
-# Split data
-xtrain, xtest, ytrain, ytest = train_test_split(x_scaled, y, test_size=0.2, random_state=23, stratify=y)
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=23, stratify=y)
 
-# Train model
+# Model training
 model = KNeighborsClassifier()
-model.fit(xtrain, ytrain)
-acc = accuracy_score(ytest, model.predict(xtest))
+model.fit(X_train, y_train)
+accuracy = accuracy_score(y_test, model.predict(X_test))
 
-st.subheader("✅ KNN Model Accuracy")
-st.write(f"Accuracy Score: **{acc:.4f}**")
+# -------------------------------
+# Display Model Accuracy
+# -------------------------------
+st.subheader("✅ Model Accuracy")
+st.write(f"Accuracy Score: **{accuracy:.4f}**")
 
-# Sidebar - User input
+# -------------------------------
+# Sidebar - Input for Single Prediction
+# -------------------------------
 st.sidebar.header("Input Employee Details")
 
 age = st.sidebar.slider("Age", 18, 65, 30)
 education = st.sidebar.selectbox("Education Level", label_encoders['education'].classes_)
-job = st.sidebar.selectbox("Job Role", label_encoders['occupation'].classes_)
-hours = st.sidebar.slider("Hours per week", 1, 80, 40)
+occupation = st.sidebar.selectbox("Job Role", label_encoders['occupation'].classes_)
+hours_per_week = st.sidebar.slider("Hours per week", 1, 80, 40)
 experience = st.sidebar.slider("Years of Experience", 0, 40, 5)
 
-# Prepare single prediction input
+# Construct input DataFrame
 input_dict = {
     'age': age,
     'education': label_encoders['education'].transform([education])[0],
-    'occupation': label_encoders['occupation'].transform([job])[0],
-    'hours-per-week': hours,
-    'experience': experience,
+    'occupation': label_encoders['occupation'].transform([occupation])[0],
+    'hours-per-week': hours_per_week,
+    'experience': experience
 }
 
-# Create a DataFrame with dummy columns to match the original dataset
 input_df = pd.DataFrame([input_dict])
-for col in x.columns:
+
+# Add missing columns with zeros (if any)
+for col in X.columns:
     if col not in input_df.columns:
         input_df[col] = 0
+input_df = input_df[X.columns]
 
-input_df = input_df[x.columns]
+# Scale input
 input_scaled = scaler.transform(input_df)
 
+# Show Input Data
 st.subheader("📥 Input Data")
 st.write(input_df)
 
+# Predict
 if st.button("Predict Salary Class"):
-    pred = model.predict(input_scaled)
-    pred_label = ">50K" if pred[0] == 1 else "<=50K"
-    st.success(f"Predicted Salary Class: **{pred_label}**")
+    prediction = model.predict(input_scaled)[0]
+    result = ">50K" if prediction == 1 else "<=50K"
+    st.success(f"Predicted Salary Class: **{result}**")
 
-# Batch prediction
+# -------------------------------
+# Batch Prediction
+# -------------------------------
 st.subheader("📂 Batch Prediction")
-uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Upload a CSV file for batch prediction", type=["csv"])
+
+def safe_label_encode(le, series):
+    known_classes = set(le.classes_)
+    safe_series = series.apply(lambda val: val if val in known_classes else None)
+    if safe_series.isnull().any():
+        st.warning(f"⚠️ Unseen labels found in column. Replacing with most frequent known value.")
+        safe_series = safe_series.fillna(le.classes_[0])
+    return le.transform(safe_series)
 
 if uploaded_file:
-    batch_data = pd.read_csv(uploaded_file)
-    original_data = batch_data.copy()
+    batch_df = pd.read_csv(uploaded_file)
+    original_df = batch_df.copy()
 
-    # Apply label encoding
+    # Encode categorical columns safely
     for col in label_encoders:
-        if col in batch_data.columns:
-            batch_data[col] = label_encoders[col].transform(batch_data[col])
+        if col in batch_df.columns:
+            batch_df[col] = safe_label_encode(label_encoders[col], batch_df[col])
 
-    batch_data_scaled = scaler.transform(batch_data[x.columns])
-    batch_preds = model.predict(batch_data_scaled)
-    batch_labels = [">50K" if pred == 1 else "<=50K" for pred in batch_preds]
+    # Fill missing columns if necessary
+    for col in X.columns:
+        if col not in batch_df.columns:
+            batch_df[col] = 0
 
-    original_data['Predicted Salary'] = batch_labels
-    st.write("📋 Prediction Results:")
-    st.dataframe(original_data)
+    batch_df = batch_df[X.columns]
+    batch_scaled = scaler.transform(batch_df)
+    batch_preds = model.predict(batch_scaled)
+    original_df['Predicted Salary'] = [">50K" if p == 1 else "<=50K" for p in batch_preds]
 
-    # Optionally download results
-    csv_download = original_data.to_csv(index=False).encode('utf-8')
-    st.download_button("Download Prediction Results", csv_download, "batch_predictions.csv", "text/csv")
+    st.write("📊 Batch Prediction Results")
+    st.dataframe(original_df)
 
-# Visualization section
+    # Download button
+    csv = original_df.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Predictions", csv, "predicted_salaries.csv", "text/csv")
+
+# -------------------------------
+# Visualizations
+# -------------------------------
 st.subheader("📊 Data Visualizations")
-
 col1, col2 = st.columns(2)
 
 with col1:
