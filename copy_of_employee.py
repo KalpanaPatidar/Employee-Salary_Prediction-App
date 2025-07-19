@@ -7,6 +7,12 @@ Original file is located at
     https://colab.research.google.com/drive/16g8QseRp9sSOfFyeHoYs-6af8rmP8-RU
 """
 
+import streamlit as st
+
+st.title("Employee Income Classification App")
+
+st.write("Preview of the dataset:")
+st.dataframe(data.head())
 
 import matplotlib.pyplot as plt
 
