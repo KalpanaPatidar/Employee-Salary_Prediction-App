@@ -8,6 +8,7 @@ Original file is located at
 """
 
 
+import matplotlib.pyplot as plt
 
 import pandas as pd
 
