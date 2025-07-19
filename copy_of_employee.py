@@ -104,13 +104,11 @@ st.write("Upload a CSV file for batch prediction")
 
 uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
 
-def safe_label_encode(le, series):
+# Silent encoding: replace unseen values with default
+def silent_label_encode(le, series):
     known = set(le.classes_)
-    series_safe = series.apply(lambda x: x if x in known else None)
-    if series_safe.isnull().any():
-        st.warning(f"⚠️ Column '{series.name}' has unseen labels. Replacing with most frequent known value: '{le.classes_[0]}'")
-        series_safe = series_safe.fillna(le.classes_[0])
-    return le.transform(series_safe)
+    safe_series = series.apply(lambda x: x if x in known else le.classes_[0])
+    return le.transform(safe_series)
 
 if uploaded_file:
     batch_df = pd.read_csv(uploaded_file)
@@ -118,7 +116,7 @@ if uploaded_file:
 
     for col in label_encoders:
         if col in batch_df.columns:
-            batch_df[col] = safe_label_encode(label_encoders[col], batch_df[col])
+            batch_df[col] = silent_label_encode(label_encoders[col], batch_df[col])
 
     for col in X.columns:
         if col not in batch_df.columns:
